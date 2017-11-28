@@ -1,6 +1,11 @@
 #include "unp.h"
 
 
+/**
+ * 处理客户端的请求
+ * 向服务器发送一个表达式（例如：1+1）
+ * 然后服务器会发回表达式的结果，客户端接收它并显示出来（例如：2）
+ */
 void operator_cli(FILE * fp, int sockfd){
 	char sendline[MAXLINE], recvline[MAXLINE];
 	while(Fgets(sendline, MAXLINE, fp) != NULL){
