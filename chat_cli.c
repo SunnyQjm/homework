@@ -1,8 +1,23 @@
 #include <unp.h>
+#include <string.h>
+
+#define STATE_INIT '0'
+#define STATE_USER_NAME_ALREADY '1'
+#define STATE_LOGIN_SUCCESS '2'
+
+
+void sendWithCode(int sockfd, char* msg, char* code, char*buf){
+    strcpy(buf, msg);
+    strcat(buf, code);
+    Writen(sockfd, buf, strlen(buf));
+}
 
 void sendMsg(FILE* fp, int sockfd){
     int maxfdpl;
     fd_set rset;
+    ssize_t n;
+
+    char state = STATE_INIT;
 
     char sendline[MAXLINE], recvline[MAXLINE];
 
@@ -18,10 +33,13 @@ void sendMsg(FILE* fp, int sockfd){
 
         //socket is readable
         if(FD_ISSET(sockfd, &rset)){
-            if(Readline(sockfd, recvline, MAXLINE) == 0){
+            if((n = Read(sockfd, recvline, MAXLINE)) == 0){
                 err_quit("server socket closed!!");
             }
-            printf("Other: ");
+            state = recvline[n - 2];
+            if(state != STATE_LOGIN_SUCCESS){
+                recvline[n - 2] = '\0';               
+            }
             Fputs(recvline, stdout);
         }
 
@@ -29,7 +47,15 @@ void sendMsg(FILE* fp, int sockfd){
         if(FD_ISSET(fileno(fp), &rset)){
             if(Fgets(sendline, MAXLINE, fp) == NULL)
                 return;
-            Writen(sockfd, sendline, strlen(sendline));
+            if(state == STATE_INIT){    //还没有登录，输入用户名
+                sendline[strlen(sendline) - 1] = '\0';
+                sendWithCode(sockfd, sendline, "0\n", sendline);
+            } else if(state == STATE_USER_NAME_ALREADY){ //已经输入用户名，
+                sendline[strlen(sendline) - 1] = '\0';
+                sendWithCode(sockfd, sendline, "1\n", sendline);
+            } else if(state == STATE_LOGIN_SUCCESS){ //已经登录
+                sendWithCode(sockfd, sendline, "2\n", sendline);
+            }
         }
     }
 }
@@ -40,7 +66,7 @@ int main(int argc, char **argv){
     //下面这个结构体用来存储一个IP地址
 	struct sockaddr_in servaddr;
 
-    /**
+    /*
      * 对控制台输入参数的判断：调用格式如==> operator_cli 127.0.0.1
      */
 	if(argc != 2)

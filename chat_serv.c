@@ -5,19 +5,23 @@
 #define MAX_PWD_FAIL_COUNT 3
 #define MAX_CHAT_NUM 20
 
-char users[USER_NUM][20] = {
-    "user1\n", 
-    "user2\n",
-    "user3\n"
+#define STATE_INIT '0'
+#define STATE_USER_NAME_ALREADY '1'
+#define STATE_LOGIN_SUCCESS '2'
+
+
+char sendBuf[MAXLINE];
+struct UserRecord{
+    int sockfd;
+    char username[20];
+    char pwd[20];
+    char state;
+    int failNum; 
+} records[] = {
+    {-1, "user1", "123456", STATE_INIT, 0}, 
+    {-1, "user2", "123456", STATE_INIT, 0},
+    {-1, "user2", "123456", STATE_INIT, 0}
 };
-
-char pwd[USER_NUM][20] = {
-    "123456\n", 
-    "123456\n", 
-    "123456\n"
-};
-
-
 
 int sockfds[MAX_CHAT_NUM] = {0};
 
@@ -77,47 +81,12 @@ void sendString(int sockfd, char* msg, char* buf){
     Writen(sockfd, buf, strlen(buf));
 }
 
-/**
- * 验证用户的用户名和密码
- */
-void vertify(int sockfd){
-    char sendline[MAXLINE], recvline[MAXLINE];
-    int flag = -1;
-    int pwdFailCount = 0;
-    sendString(sockfd, "Username: \n", sendline);
-    while(flag < 0){
-        if(Readline(sockfd, recvline, MAXLINE) == 0){
-           err_quit("Client socket closed!!");
-        }
-        for(int i = 0; i < USER_NUM; i++){
-            if(strcmp(users[i], recvline) == 0){
-                flag = i;
-                break;
-            } 
-        }
-        if(flag < 0){
-            sendString(sockfd, "User not exist, try again!!\n", sendline);
-        }
-    }
-
-    sendString(sockfd, "Password: \n", sendline);
-    while(pwdFailCount <= MAX_PWD_FAIL_COUNT){
-        if(Readline(sockfd, recvline, MAXLINE) == 0){
-            err_quit("Client socket closed!!");
-        }
-        if(strcmp(pwd[flag], recvline) == 0){   //if the pwd is correct
-            //add sockfd to buf 
-            sendString(sockfd, "Login Success!\n", sendline);
-            addSockfd(sockfd);
-            return;
-        }
-        // if the pwd is not correct
-        sendString(sockfd, "Password not correct, try again!!\n", sendline);
-    }
-
-    err_quit("password not correct!!");
-}
-
+void sendWithCode(int sockfd, char* msg, char* code, char*buf){
+    strcpy(buf, msg);
+    strcat(buf, code);
+    int size = strlen(msg) + strlen(code);
+    Writen(sockfd, buf, size);
+}   
 
 /**
  * 将消息广播给已有的连接
@@ -125,28 +94,72 @@ void vertify(int sockfd){
  * 因为sockfd是发送这个消息到服务器的客户端，所以可以不用把消息回射给它，发送给其他用户即可
  */
 void brodcastMsg(int sockfd, char* msg, int length){
-    for(int i = 0; i < MAX_CHAT_NUM; i++){
-        if(sockfds[i] > 0 && sockfds[i] != sockfd){
-            Writen(sockfds[i], msg, length);
+    printf("broad msg: %s", msg);
+    for(int i = 0; i < USER_NUM; i++){
+        if(records[i].sockfd < 0){
+            printf("-1\n");
+            continue;
         }
+        printf("sendto: %d\n", records[i].sockfd);
+        sendWithCode(sockfd, msg, "2\n", sendBuf); 
     }
 }
 
 /**
- * 处理服务器的聊天逻辑，没收到一个客户端发送的消息就转发给其他的已经连接的客户端
- * 达到群聊的效果
+ * 验证用户名
  */
-void chat(int sockfd){
-    char recvline[MAXLINE];
-
-    for(; ;){
-        if(Readline(sockfd, recvline, MAXLINE) == 0){
-            removeSockfd(sockfd);
-            err_quit("server socket closed!!");
+void vertifyName(int sockfd, char* username){
+    for(int i = 0; i < USER_NUM; i++){
+        if(strcmp(records[i].username, username) == 0){
+            if(records[i].state != STATE_INIT || records[i].sockfd > 0){
+                sendWithCode(sockfd, "User already login! try again!", "\n0\n", sendBuf);
+                return; 
+            } else {
+                records[i].sockfd = sockfd;
+                records[i].state = STATE_USER_NAME_ALREADY;
+                sendWithCode(sockfd, "Password: ", "\n1\n", sendBuf);
+                return;
+            }
         }
-        brodcastMsg(sockfd, recvline, strlen(recvline));
+    }
+    sendString(sockfd, "User not exist! Try again!\n0\n", sendBuf);
+}
+
+/**
+ * 验证密码
+ */
+void vertifyPwd(int sockfd, char* password){
+    for(int i = 0; i < USER_NUM; i++){
+        if(sockfd == records[i].sockfd){
+            if(strcmp(records[i].pwd, password) == 0){   //验证通过
+                records[i].sockfd = sockfd;
+                records[i].state = STATE_LOGIN_SUCCESS;
+                sendWithCode(sockfd, "Login Success!!", "\n2\n", sendBuf);
+            } else if(records[i].failNum <= MAX_PWD_FAIL_COUNT){
+                records[i].failNum++;
+                sendString(sockfd, "Password not correct, try again!\n1\n", sendBuf);
+            } else {
+                records[i].failNum = 0;
+                records[i].sockfd = -1;
+                records[i].state = STATE_INIT;
+                sendString(sockfd, "Password not correct too much time!\n0\n", sendBuf);
+            }
+        }
     }
 }
+
+void clearUser(int sockfd){
+    for(int i = 0; i < USER_NUM; i++){
+        if(records[i].sockfd = sockfd){
+            records[i].state = STATE_INIT;
+            records[i].failNum = 0;
+            records[i].sockfd = -1;
+        }
+    }
+}
+
+
+
 /*
  * 下面这段代码基本上就是第5章的回射函数的服务端代码，唯一不同的就是，各个array type has incomplete element type ‘char[]部分的功能书本上有详解（课本p98）
  * 在接收到客户端的连接以后的处理，我们调用deal来具体处理
@@ -156,6 +169,8 @@ int main(){
 	pid_t childpid;
     socklen_t clilen;
 	struct sockaddr_in cliaddr, servaddr;
+
+    int state;  //暂存用户的状态
 
     int i, maxi, maxfd, sockfd;
     int nready;
@@ -195,8 +210,9 @@ int main(){
         if(FD_ISSET(listenfd, &rset)){
             clilen = sizeof(cliaddr);
     		connfd = Accept(listenfd, (SA*) &cliaddr, &clilen);
-            vertify(connfd);
+          //  vertify(connfd);
             addSockfd(connfd);
+            sendWithCode(connfd, "Username: ", "\n0\n", buf);
             FD_SET(connfd, &allset);
             if(connfd > maxfd)
                 maxfd = connfd;
@@ -206,18 +222,33 @@ int main(){
         }
 
         for(i = 0; i < MAX_CHAT_NUM; i++){
-            printf("search!\n");
             if((sockfd = sockfds[i]) < 0)
                 continue;
             if(FD_ISSET(sockfd, &rset)){
                 printf("%d ready\n", sockfd);
-                if((Readline(sockfd, buf, MAXLINE)) == 0){
+                if((n = Read(sockfd, buf, MAXLINE)) == 0){
                     Close(sockfd);
                     FD_CLR(sockfd, &allset);
                     removeSockfd(sockfd);
+                    clearUser(sockfd);
                 } else {
-                    printf("brodcast msg: %s", buf);
-                    brodcastMsg(sockfd, buf, strlen(buf));
+                    //printf("code: %c", buf[n - 2]);
+                    //printf("brodcast msg: %s", buf);
+                    //brodcastMsg(sockfd, buf, strlen(buf));
+                    state = buf[n - 2];
+                    buf[n - 2] = '\0';
+                    switch(state){
+                    case STATE_INIT:
+                        vertifyName(sockfd, buf);
+                        break;
+                    case STATE_USER_NAME_ALREADY:
+                        vertifyPwd(sockfd, buf);
+                        break;
+                    case STATE_LOGIN_SUCCESS:
+                        brodcastMsg(sockfd, buf, strlen(buf));
+                        break;
+                    }
+                    memset(buf, 0, sizeof(buf));
                 }
                 if(--nready <= 0)
                     break;
