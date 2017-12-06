@@ -90,7 +90,7 @@ void sendWithCode(int sockfd, char* msg, char* code, char*buf){
 
 /**
  * 将消息广播给已有的连接
- * 除了sockfd所指示的
+ * 但是不广播给自己
  * 因为sockfd是发送这个消息到服务器的客户端，所以可以不用把消息回射给它，发送给其他用户即可
  */
 void brodcastMsg(int sockfd, char* msg, int length){
@@ -119,10 +119,10 @@ void brodcastMsg(int sockfd, char* msg, int length){
 void vertifyName(int sockfd, char* username){
     for(int i = 0; i < USER_NUM; i++){
         if(strcmp(records[i].username, username) == 0){
-            if(records[i].state != STATE_INIT || records[i].sockfd > 0){
+            if(records[i].state != STATE_INIT || records[i].sockfd > 0){    //用户已经登录，不允许重复登录
                 sendWithCode(sockfd, "User already login! try again!", "\n0\n", sendBuf);
                 return; 
-            } else {
+            } else {    //静态表里面有这个用户（可以认为这个用户名是已注册的，是有效的）
                 records[i].sockfd = sockfd;
                 records[i].state = STATE_USER_NAME_ALREADY;
                 sendWithCode(sockfd, "Password: ", "\n1\n", sendBuf);
@@ -143,10 +143,10 @@ void vertifyPwd(int sockfd, char* password){
                 records[i].sockfd = sockfd;
                 records[i].state = STATE_LOGIN_SUCCESS;
                 sendWithCode(sockfd, "Login Success!!", "\n2\n", sendBuf);
-            } else if(records[i].failNum < MAX_PWD_FAIL_COUNT){
+            } else if(records[i].failNum < MAX_PWD_FAIL_COUNT){ //密码错误，但是错误次数还不多，允许再次输入
                 records[i].failNum++;
                 sendString(sockfd, "Password not correct, try again!\n1\n", sendBuf);
-            } else {
+            } else {    //密码错了太多次，要求重新输入用户名
                 records[i].failNum = 0;
                 records[i].sockfd = -1;
                 records[i].state = STATE_INIT;
@@ -156,6 +156,9 @@ void vertifyPwd(int sockfd, char* password){
     }
 }
 
+/**
+ * 用户断开连接后，清空该用户的信息
+ */
 void clearUser(int sockfd){
     for(int i = 0; i < USER_NUM; i++){
         if(records[i].sockfd == sockfd){
