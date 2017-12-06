@@ -20,7 +20,7 @@ struct UserRecord{
 } records[] = {
     {-1, "user1", "123456", STATE_INIT, 0}, 
     {-1, "user2", "123456", STATE_INIT, 0},
-    {-1, "user2", "123456", STATE_INIT, 0}
+    {-1, "user3", "123456", STATE_INIT, 0}
 };
 
 int sockfds[MAX_CHAT_NUM] = {0};
@@ -84,8 +84,8 @@ void sendString(int sockfd, char* msg, char* buf){
 void sendWithCode(int sockfd, char* msg, char* code, char*buf){
     strcpy(buf, msg);
     strcat(buf, code);
-    int size = strlen(msg) + strlen(code);
-    Writen(sockfd, buf, size);
+    //int size = strlen(msg) + strlen(code);
+    Writen(sockfd, buf, strlen(buf));
 }   
 
 /**
@@ -95,13 +95,21 @@ void sendWithCode(int sockfd, char* msg, char* code, char*buf){
  */
 void brodcastMsg(int sockfd, char* msg, int length){
     printf("broad msg: %s", msg);
+    int from = -1;
     for(int i = 0; i < USER_NUM; i++){
-        if(records[i].sockfd < 0){
+        if(sockfd == records[i].sockfd){
+            from = i;
+            break;
+        }
+    }
+    for(int i = 0; i < USER_NUM; i++){
+        if(records[i].sockfd < 0 || records[i].sockfd == sockfd){
             printf("-1\n");
             continue;
         }
         printf("sendto: %d\n", records[i].sockfd);
-        sendWithCode(sockfd, msg, "2\n", sendBuf); 
+        sendWithCode(records[i].sockfd, records[from].username, ": ", sendBuf);
+        sendWithCode(records[i].sockfd, msg, "2\n", sendBuf); 
     }
 }
 
@@ -135,14 +143,14 @@ void vertifyPwd(int sockfd, char* password){
                 records[i].sockfd = sockfd;
                 records[i].state = STATE_LOGIN_SUCCESS;
                 sendWithCode(sockfd, "Login Success!!", "\n2\n", sendBuf);
-            } else if(records[i].failNum <= MAX_PWD_FAIL_COUNT){
+            } else if(records[i].failNum < MAX_PWD_FAIL_COUNT){
                 records[i].failNum++;
                 sendString(sockfd, "Password not correct, try again!\n1\n", sendBuf);
             } else {
                 records[i].failNum = 0;
                 records[i].sockfd = -1;
                 records[i].state = STATE_INIT;
-                sendString(sockfd, "Password not correct too much time!\n0\n", sendBuf);
+                sendString(sockfd, "Password not correct too much time! Please input a new username\n0\n", sendBuf);
             }
         }
     }
@@ -150,7 +158,7 @@ void vertifyPwd(int sockfd, char* password){
 
 void clearUser(int sockfd){
     for(int i = 0; i < USER_NUM; i++){
-        if(records[i].sockfd = sockfd){
+        if(records[i].sockfd == sockfd){
             records[i].state = STATE_INIT;
             records[i].failNum = 0;
             records[i].sockfd = -1;

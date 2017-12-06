@@ -37,9 +37,7 @@ void sendMsg(FILE* fp, int sockfd){
                 err_quit("server socket closed!!");
             }
             state = recvline[n - 2];
-            if(state != STATE_LOGIN_SUCCESS){
-                recvline[n - 2] = '\0';               
-            }
+            recvline[n - 2] = '\0';               
             Fputs(recvline, stdout);
         }
 
