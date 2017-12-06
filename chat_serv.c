@@ -17,6 +17,8 @@ char pwd[USER_NUM][20] = {
     "123456\n"
 };
 
+
+
 int sockfds[MAX_CHAT_NUM] = {0};
 
 /**
@@ -105,6 +107,7 @@ void vertify(int sockfd){
         }
         if(strcmp(pwd[flag], recvline) == 0){   //if the pwd is correct
             //add sockfd to buf 
+            sendString(sockfd, "Login Success!\n", sendline);
             addSockfd(sockfd);
             return;
         }
