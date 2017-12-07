@@ -64,14 +64,14 @@ float dealString(char* buf, int n){
                  * atof是头文件stdlib.h中包含的一个库函数
                  * 其作用是将一个字符串转化成浮点型
                  */
-				op1 = atof(&temp);
+				op1 = atof(temp);
 				opt = buf[i];
 				t = 0;
 				for(i = i + 1; i < n; i++, t++){
 					temp[t] = buf[i];
 				}
 				temp[t] = '\0';
-				op2 = atof(&temp);
+				op2 = atof(temp);
 				
 				return operator(op1, opt, op2);
 			} else if(buf[i] == ' '){ //忽略检测到的空格
